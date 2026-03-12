@@ -5,7 +5,7 @@ on:
     branches: [ main ]
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -19,10 +19,12 @@ jobs:
       - name: Build Frontend
         working-directory: ./frontend
         run: |
-          # Use your actual domain here for the API
+          # Ensuring the API points to your SSL domain
           echo "REACT_APP_API_URL=https://jaychhantbar.ddns.net/api" > .env
           npm install
           npm run build
+          # Debug step: list files to prove they exist for the next step
+          ls -R build 
 
       - name: Upload Build to Frontend Server
         uses: appleboy/scp-action@master
@@ -30,27 +32,22 @@ jobs:
           host: ${{ secrets.FRONTEND_IP }}
           username: ubuntu
           key: ${{ secrets.SERVER_SSH_KEY }}
-          # This points to the folder created by the build step above
-          source: "frontend/build/"
+          # Path relative to the root of the repo
+          source: "frontend/build"
           target: "/home/ubuntu/deploy_temp"
           strip_components: 1
 
-      - name: Deploy Files Securely
+      - name: Move Files to Web Root
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.FRONTEND_IP }}
           username: ubuntu
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            # 1. Clear ONLY the web content, NOT Nginx configs
+            # This part is safe: it only touches /var/www/html
+            # Your SSL and Nginx configs in /etc/nginx/ are untouched.
             sudo rm -rf /var/www/html/*
-
-            # 2. Copy the new build files into the web root
-            sudo cp -r /home/ubuntu/deploy_temp/build/* /var/www/html/
-
-            # 3. Clean up the temp folder
+            sudo cp -r /home/ubuntu/deploy_temp/frontend/build/* /var/www/html/
             rm -rf /home/ubuntu/deploy_temp
-
-            # 4. Restart Nginx to pick up any changes (Safe)
             sudo systemctl restart nginx
-            echo "✅ Frontend deployment successful without touching SSL configs!"
+            echo "✅ Deployment successful!"
