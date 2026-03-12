@@ -9,31 +9,48 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
 
       - name: Build Frontend
         working-directory: ./frontend
         run: |
+          # Use your actual domain here for the API
           echo "REACT_APP_API_URL=https://jaychhantbar.ddns.net/api" > .env
           npm install
           npm run build
 
-      - name: Deploy Frontend to EC2
+      - name: Upload Build to Frontend Server
         uses: appleboy/scp-action@master
         with:
           host: ${{ secrets.FRONTEND_IP }}
           username: ubuntu
           key: ${{ secrets.SERVER_SSH_KEY }}
-          source: "frontend/build/*"
-          target: "/tmp/frontend-deploy" # Upload to tmp first to avoid permission issues
+          # This points to the folder created by the build step above
+          source: "frontend/build/"
+          target: "/home/ubuntu/deploy_temp"
+          strip_components: 1
 
-      - name: Finalize Frontend Files
+      - name: Deploy Files Securely
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.FRONTEND_IP }}
           username: ubuntu
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
+            # 1. Clear ONLY the web content, NOT Nginx configs
             sudo rm -rf /var/www/html/*
-            sudo cp -r /tmp/frontend-deploy/frontend/build/* /var/www/html/
+
+            # 2. Copy the new build files into the web root
+            sudo cp -r /home/ubuntu/deploy_temp/build/* /var/www/html/
+
+            # 3. Clean up the temp folder
+            rm -rf /home/ubuntu/deploy_temp
+
+            # 4. Restart Nginx to pick up any changes (Safe)
             sudo systemctl restart nginx
+            echo "✅ Frontend deployment successful without touching SSL configs!"
