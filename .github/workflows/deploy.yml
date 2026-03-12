@@ -19,34 +19,42 @@ jobs:
       - name: Build Frontend
         working-directory: ./frontend
         run: |
+          # Injecting the API URL for your SSL domain
           echo "REACT_APP_API_URL=https://jaychhantbar.ddns.net/api" > .env
           npm install
           npm run build
-          # This confirms the folder is 'dist' and not 'build'
+          # Verification step: Ensure 'dist' folder exists
           ls -F 
 
-      - name: Upload Dist to Frontend Server
+      - name: Upload Files to Server
         uses: appleboy/scp-action@master
         with:
           host: ${{ secrets.FRONTEND_IP }}
           username: ubuntu
           key: ${{ secrets.SERVER_SSH_KEY }}
-          # Switched to dist
           source: "frontend/dist"
           target: "/home/ubuntu/deploy_temp"
           strip_components: 1
 
-      - name: Move Files to Web Root
+      - name: Deploy and Fix Permissions
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.FRONTEND_IP }}
           username: ubuntu
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            # Only touching the web content - SSL/Nginx configs are safe
+            # 1. Clean existing web root
             sudo rm -rf /var/www/html/*
-            # Moving from dist instead of build
+            
+            # 2. Copy new files from temp to web root
             sudo cp -r /home/ubuntu/deploy_temp/frontend/dist/* /var/www/html/
+            
+            # 3. FIX THE 403 FORBIDDEN ERROR (Permissions)
+            # This allows Nginx (www-data user) to read the files
+            sudo chown -R www-data:www-data /var/www/html
+            sudo chmod -R 755 /var/www/html
+            
+            # 4. Cleanup and Restart
             rm -rf /home/ubuntu/deploy_temp
             sudo systemctl restart nginx
-            echo "✅ Deployment successful from dist folder!"
+            echo "✅ Deployment complete! Permissions fixed, Site live."
