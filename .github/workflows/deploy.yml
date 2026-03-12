@@ -19,14 +19,11 @@ jobs:
       - name: Build Frontend
         working-directory: ./frontend
         run: |
-          # Injecting the API URL for your SSL domain
           echo "REACT_APP_API_URL=https://jaychhantbar.ddns.net/api" > .env
           npm install
           npm run build
-          # Verification step: Ensure 'dist' folder exists
-          ls -F 
 
-      - name: Upload Files to Server
+      - name: Upload to Server
         uses: appleboy/scp-action@master
         with:
           host: ${{ secrets.FRONTEND_IP }}
@@ -34,27 +31,34 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           source: "frontend/dist"
           target: "/home/ubuntu/deploy_temp"
-          strip_components: 1
 
-      - name: Deploy and Fix Permissions
+      - name: Deploy with Path Discovery
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.FRONTEND_IP }}
           username: ubuntu
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            # 1. Clean existing web root
+            # 1. Locate the 'dist' folder anywhere inside the temp dir
+            SOURCE_DIR=$(find /home/ubuntu/deploy_temp -type d -name "dist" | head -n 1)
+            
+            if [ -z "$SOURCE_DIR" ]; then
+              echo "❌ ERROR: 'dist' folder not found in /home/ubuntu/deploy_temp"
+              ls -R /home/ubuntu/deploy_temp
+              exit 1
+            fi
+            
+            echo "🚀 Found build files in: $SOURCE_DIR"
+            
+            # 2. Clear and Copy
             sudo rm -rf /var/www/html/*
+            sudo cp -r $SOURCE_DIR/* /var/www/html/
             
-            # 2. Copy new files from temp to web root
-            sudo cp -r /home/ubuntu/deploy_temp/frontend/dist/* /var/www/html/
-            
-            # 3. FIX THE 403 FORBIDDEN ERROR (Permissions)
-            # This allows Nginx (www-data user) to read the files
+            # 3. Fix Permissions
             sudo chown -R www-data:www-data /var/www/html
             sudo chmod -R 755 /var/www/html
             
-            # 4. Cleanup and Restart
+            # 4. Clean up
             rm -rf /home/ubuntu/deploy_temp
             sudo systemctl restart nginx
-            echo "✅ Deployment complete! Permissions fixed, Site live."
+            echo "✅ Site is now LIVE at https://jaychhantbar.ddns.net"
