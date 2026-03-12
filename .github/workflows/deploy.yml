@@ -19,21 +19,20 @@ jobs:
       - name: Build Frontend
         working-directory: ./frontend
         run: |
-          # Ensuring the API points to your SSL domain
           echo "REACT_APP_API_URL=https://jaychhantbar.ddns.net/api" > .env
           npm install
           npm run build
-          # Debug step: list files to prove they exist for the next step
-          ls -R build 
+          # This confirms the folder is 'dist' and not 'build'
+          ls -F 
 
-      - name: Upload Build to Frontend Server
+      - name: Upload Dist to Frontend Server
         uses: appleboy/scp-action@master
         with:
           host: ${{ secrets.FRONTEND_IP }}
           username: ubuntu
           key: ${{ secrets.SERVER_SSH_KEY }}
-          # Path relative to the root of the repo
-          source: "frontend/build"
+          # Switched to dist
+          source: "frontend/dist"
           target: "/home/ubuntu/deploy_temp"
           strip_components: 1
 
@@ -44,10 +43,10 @@ jobs:
           username: ubuntu
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            # This part is safe: it only touches /var/www/html
-            # Your SSL and Nginx configs in /etc/nginx/ are untouched.
+            # Only touching the web content - SSL/Nginx configs are safe
             sudo rm -rf /var/www/html/*
-            sudo cp -r /home/ubuntu/deploy_temp/frontend/build/* /var/www/html/
+            # Moving from dist instead of build
+            sudo cp -r /home/ubuntu/deploy_temp/frontend/dist/* /var/www/html/
             rm -rf /home/ubuntu/deploy_temp
             sudo systemctl restart nginx
-            echo "✅ Deployment successful!"
+            echo "✅ Deployment successful from dist folder!"
